@@ -21,7 +21,7 @@ def evaluate(args):
     model = PoseNet("resnet34").cuda().eval()
     load_ckpt(model, args.ckpt)
 
-    # 逐帧误差
+    # 逐帧结果
     results = []
 
     with torch.no_grad():
@@ -38,7 +38,9 @@ def evaluate(args):
             results.append({
                 "frame": idx,
                 "t_err_m": t_err,
-                "r_err_deg": r_err
+                "r_err_deg": r_err,
+                "t_gt_x": float(t_gt[0]), "t_gt_y": float(t_gt[1]), "t_gt_z": float(t_gt[2]),
+                "t_pred_x": float(t_pred[0]), "t_pred_y": float(t_pred[1]), "t_pred_z": float(t_pred[2]),
             })
 
     df = pd.DataFrame(results)
@@ -56,21 +58,10 @@ def evaluate(args):
           f"mean_t={stats['mean_t']:.3f} m | median_t={stats['median_t']:.3f} m || "
           f"mean_r={stats['mean_r']:.2f}° | median_r={stats['median_r']:.2f}°")
 
-    # 保存逐帧误差和统计
+    # 保存逐帧和统计
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     per_frame_csv = args.out.replace(".csv", "_perframe.csv")
     df.to_csv(per_frame_csv, index=False)
     pd.DataFrame([stats]).to_csv(args.out, index=False)
 
     return stats, df
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_root", type=str, required=True)
-    parser.add_argument("--scene", type=str, required=True)
-    parser.add_argument("--ckpt", type=str, required=True)
-    parser.add_argument("--out", type=str, default="results/eval_results.csv")
-    args = parser.parse_args()
-
-    evaluate(args)
