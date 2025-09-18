@@ -1,81 +1,74 @@
+# eval.py
+
+import os
+import argparse
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
-import numpy as np
+import pandas as pd
+
 from data_loader import SevenScenesDataset
-from utils import pose_error
-import torchvision.transforms as T
+from models import PoseNet
+from utils import load_ckpt, pose_err_trans_m, pose_err_angular_deg, to_numpy
 
 
-def evaluate(model, dataset, device="cuda"):
-    """
-    在整个测试集上评估模型
-    Args:
-        model: 已训练的 PoseNet 模型
-        dataset: SevenScenesDataset (split="test")
-        device: "cuda" or "cpu"
-    Returns:
-        mean_t_err: 平均平移误差 (m)
-        mean_r_err: 平均旋转误差 (deg)
-    """
-    model.eval()
-    loader = DataLoader(dataset, batch_size=1, shuffle=False)
+def evaluate(args):
+    # 数据集 (测试集)
+    ds = SevenScenesDataset(args.data_root, args.scene, split="test")
+    dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=2)
 
-    t_errors, r_errors = [], []
+    # 模型
+    model = PoseNet("resnet34").cuda().eval()
+    load_ckpt(model, args.ckpt)
+
+    # 结果
+    trans_errs, rot_errs = [], []
 
     with torch.no_grad():
-        for batch in loader:
-            img = batch["image"].to(device)
-            pose_gt = batch["pose_matrix"].squeeze(0).cpu().numpy()
+        for img, t_gt, q_gt in dl:
+            img = img.cuda()
+            pred = model(img)[0].cpu()
 
-            # ---- 模型预测 (假设输出 t[3], q[4]) ----
-            pred = model(img)  # e.g. (B,7)
-            pred = pred.squeeze(0).cpu().numpy()
+            t_pred, q_pred = pred[:3], pred[3:]
+            t_gt, q_gt = t_gt[0], q_gt[0]
 
-            t_pred = pred[:3]
-            q_pred = pred[3:] / np.linalg.norm(pred[3:])  # 归一化
+            t_err = pose_err_trans_m(to_numpy(t_pred), to_numpy(t_gt))
+            r_err = pose_err_angular_deg(to_numpy(q_pred), to_numpy(q_gt))
 
-            # 预测的 pose matrix
-            from utils import tq_to_pose
-            pose_pred = tq_to_pose(t_pred, q_pred)
+            trans_errs.append(t_err)
+            rot_errs.append(r_err)
 
-            # 误差
-            t_err, r_err = pose_error(pose_gt, pose_pred)
-            t_errors.append(t_err)
-            r_errors.append(r_err)
+    trans_errs = np.array(trans_errs)
+    rot_errs = np.array(rot_errs)
 
-    mean_t_err = np.mean(t_errors)
-    mean_r_err = np.mean(r_errors)
+    results = {
+        "scene": args.scene,
+        "mean_t": trans_errs.mean(),
+        "median_t": np.median(trans_errs),
+        "mean_r": rot_errs.mean(),
+        "median_r": np.median(rot_errs),
+    }
 
-    print(f"Evaluation Results:")
-    print(f"  Mean Translation Error: {mean_t_err:.3f} m")
-    print(f"  Mean Rotation Error:    {mean_r_err:.3f} °")
+    print(f"[{args.scene}] "
+          f"mean_t = {results['mean_t']:.3f} m | median_t = {results['median_t']:.3f} m || "
+          f"mean_r = {results['mean_r']:.2f}° | median_r = {results['median_r']:.2f}°")
 
-    return mean_t_err, mean_r_err
+    # 保存到 CSV
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    pd.DataFrame([results]).to_csv(args.out, index=False)
+    print(f"Results saved to {args.out}")
 
 
 if __name__ == "__main__":
-    # 数据预处理 (与训练保持一致)
-    transform = T.Compose([
-        T.ToPILImage(),
-        T.Resize((224, 224)),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])
-    ])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_root", type=str, required=True,
+                        help="Root directory of 7Scenes dataset")
+    parser.add_argument("--scene", type=str, required=True,
+                        help="Scene to evaluate (e.g., chess, pumpkin, redkitchen)")
+    parser.add_argument("--ckpt", type=str, required=True,
+                        help="Path to trained checkpoint (best.ckpt)")
+    parser.add_argument("--out", type=str, default="results/eval_results.csv",
+                        help="Path to save evaluation results")
+    args = parser.parse_args()
 
-    # 加载测试集
-    dataset = SevenScenesDataset(root_dir="7-scenes-dataset",
-                                 scene="chess", split="test",
-                                 transform=transform)
-
-    # 模型 (示例：PoseNet)
-    # TODO: 替换为你训练好的模型
-    from models import PoseNet
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = PoseNet().to(device)
-
-    # 加载权重
-    # model.load_state_dict(torch.load("checkpoints/posenet_chess.pth"))
-
-    # 评估
-    evaluate(model, dataset, device)
+    evaluate(args)
