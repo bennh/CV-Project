@@ -196,7 +196,9 @@ def run_baseline(args):
             results.append({
                 "frame": frame_id,
                 "t_err_m": t_err,
-                "r_err_deg": r_err
+                "r_err_deg": r_err,
+                "t_gt_x": float(t_gt[0]), "t_gt_y": float(t_gt[1]), "t_gt_z": float(t_gt[2]),
+                "t_pred_x": float(t_est[0]), "t_pred_y": float(t_est[1]), "t_pred_z": float(t_est[2]),
             })
             frame_id += 1
 
