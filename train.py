@@ -1,127 +1,93 @@
+# train.py
+
+import os
+import argparse
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import torchvision.transforms as T
+import matplotlib.pyplot as plt
+import pandas as pd
 
 from data_loader import SevenScenesDataset
 from models import PoseNet
-from utils import pose_error
+from utils import PoseLoss, set_seed, save_ckpt
 
 
-# ---------- 损失函数 ----------
-class PoseLoss(nn.Module):
-    def __init__(self, beta=120.0):
-        """
-        PoseNet 损失函数
-        L = ||t - t_gt||_2 + beta * ||q - q_gt||_2
-        """
-        super(PoseLoss, self).__init__()
-        self.beta = beta
+def train(args):
+    set_seed(0)
 
-    def forward(self, pred, target_t, target_q):
-        pred_t = pred[:, :3]
-        pred_q = pred[:, 3:]
-        pred_q = pred_q / torch.norm(pred_q, dim=1, keepdim=True)  # 归一化
+    # 数据集
+    train_ds = SevenScenesDataset(args.data_root, args.scene, split="train")
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size,
+                          shuffle=True, num_workers=4, pin_memory=True)
 
-        # L2 平移损失
-        t_loss = torch.norm(pred_t - target_t, dim=1).mean()
+    # 模型
+    model = PoseNet('resnet34').cuda()
+    criterion = PoseLoss(beta=args.beta)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
-        # L2 旋转损失
-        q_loss = torch.norm(pred_q - target_q, dim=1).mean()
+    # 保存目录
+    os.makedirs(args.out, exist_ok=True)
 
-        return t_loss + self.beta * q_loss
+    # 训练
+    best_loss = float("inf")
+    history = []
 
-
-# ---------- 训练函数 ----------
-def train(model, train_loader, val_loader, device, epochs=20, lr=1e-4, beta=120.0):
-    criterion = PoseLoss(beta=beta)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    best_val_loss = float("inf")
-
-    for epoch in range(epochs):
-        # ---- Train ----
+    for epoch in range(1, args.epochs + 1):
         model.train()
-        train_loss = 0
-        for batch in train_loader:
-            imgs = batch["image"].to(device)
-            t_gt = batch["translation"].to(device)
-            q_gt = batch["quaternion"].to(device)
+        total_loss = 0.0
+
+        for img, t_gt, q_gt in train_dl:
+            img, t_gt, q_gt = img.cuda(), t_gt.cuda(), q_gt.cuda()
+
+            pred = model(img)
+            loss = criterion(pred, t_gt, q_gt)
 
             optimizer.zero_grad()
-            preds = model(imgs)
-
-            loss = criterion(preds, t_gt, q_gt)
             loss.backward()
             optimizer.step()
 
-            train_loss += loss.item()
+            total_loss += loss.item() * img.size(0)
 
-        train_loss /= len(train_loader)
+        avg_loss = total_loss / len(train_ds)
+        history.append({"epoch": epoch, "loss": avg_loss})
+        print(f"[{epoch}/{args.epochs}] avg_loss = {avg_loss:.4f}")
 
-        # ---- Validation ----
-        model.eval()
-        val_loss = 0
-        t_errs, r_errs = [], []
-        with torch.no_grad():
-            for batch in val_loader:
-                imgs = batch["image"].to(device)
-                t_gt = batch["translation"].cpu().numpy()
-                q_gt = batch["quaternion"].cpu().numpy()
-                pose_gt = batch["pose_matrix"].cpu().numpy()
+        # 保存 best
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            save_ckpt(model, args.out, "best.ckpt")
 
-                preds = model(imgs).cpu().numpy()
-                t_pred, q_pred = preds[0, :3], preds[0, 3:]
-                q_pred /= np.linalg.norm(q_pred)
+    # 保存 loss 曲线
+    df = pd.DataFrame(history)
+    df.to_csv(os.path.join(args.out, "loss_curve.csv"), index=False)
 
-                # 损失
-                loss = criterion(torch.tensor(preds), batch["translation"], batch["quaternion"])
-                val_loss += loss.item()
+    plt.figure()
+    plt.plot(df["epoch"], df["loss"], marker="o")
+    plt.xlabel("Epoch")
+    plt.ylabel("Training Loss")
+    plt.title(f"PoseNet Training ({args.scene})")
+    plt.grid(True)
+    plt.savefig(os.path.join(args.out, "loss_curve.png"))
+    plt.close()
 
-                # 误差 (只用 batch=1 时比较合理)
-                from utils import tq_to_pose
-                pose_pred = tq_to_pose(t_pred, q_pred)
-                t_err, r_err = pose_error(pose_gt[0], pose_pred)
-                t_errs.append(t_err)
-                r_errs.append(r_err)
-
-        val_loss /= len(val_loader)
-        mean_t_err = sum(t_errs) / len(t_errs)
-        mean_r_err = sum(r_errs) / len(r_errs)
-
-        print(f"[Epoch {epoch+1}/{epochs}] "
-              f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
-              f"T_err: {mean_t_err:.3f} m | R_err: {mean_r_err:.2f}°")
-
-        # ---- 保存最好模型 ----
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), f"posenet_best.pth")
-            print("  ✅ Saved best model.")
+    print(f"Training finished. Best loss = {best_loss:.4f}")
+    print(f"Results saved in {args.out}")
 
 
-# ---------- Main ----------
 if __name__ == "__main__":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_root", type=str, required=True,
+                        help="Root directory of 7Scenes dataset")
+    parser.add_argument("--scene", type=str, default="chess",
+                        help="Which scene to train on (e.g., chess)")
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--beta", type=float, default=120.0,
+                        help="Weight factor between translation and rotation loss")
+    parser.add_argument("--out", type=str, required=True,
+                        help="Output directory for checkpoints and logs")
+    args = parser.parse_args()
 
-    transform = T.Compose([
-        T.ToPILImage(),
-        T.Resize((224, 224)),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])
-    ])
-
-    # 加载数据集 (这里用 chess 场景举例)
-    train_set = SevenScenesDataset("7-scenes-dataset", scene="chess", split="train", transform=transform)
-    val_set   = SevenScenesDataset("7-scenes-dataset", scene="chess", split="test", transform=transform)
-
-    train_loader = DataLoader(train_set, batch_size=32, shuffle=True, num_workers=4)
-    val_loader   = DataLoader(val_set, batch_size=1, shuffle=False)
-
-    # 定义模型
-    model = PoseNet(backbone="resnet18", pretrained=True).to(device)
-
-    # 训练
-    train(model, train_loader, val_loader, device, epochs=20, lr=1e-4, beta=120.0)
+    train(args)
