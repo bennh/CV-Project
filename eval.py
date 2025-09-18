@@ -13,7 +13,7 @@ from utils import load_ckpt, pose_err_trans_m, pose_err_angular_deg, to_numpy
 
 
 def evaluate(args):
-    # 数据集 (测试集)
+    # 数据集
     ds = SevenScenesDataset(args.data_root, args.scene, split="test")
     dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=2)
 
@@ -21,11 +21,11 @@ def evaluate(args):
     model = PoseNet("resnet34").cuda().eval()
     load_ckpt(model, args.ckpt)
 
-    # 结果
-    trans_errs, rot_errs = [], []
+    # 逐帧误差
+    results = []
 
     with torch.no_grad():
-        for img, t_gt, q_gt in dl:
+        for idx, (img, t_gt, q_gt) in enumerate(dl):
             img = img.cuda()
             pred = model(img)[0].cpu()
 
@@ -35,40 +35,42 @@ def evaluate(args):
             t_err = pose_err_trans_m(to_numpy(t_pred), to_numpy(t_gt))
             r_err = pose_err_angular_deg(to_numpy(q_pred), to_numpy(q_gt))
 
-            trans_errs.append(t_err)
-            rot_errs.append(r_err)
+            results.append({
+                "frame": idx,
+                "t_err_m": t_err,
+                "r_err_deg": r_err
+            })
 
-    trans_errs = np.array(trans_errs)
-    rot_errs = np.array(rot_errs)
+    df = pd.DataFrame(results)
 
-    results = {
+    # 统计
+    stats = {
         "scene": args.scene,
-        "mean_t": trans_errs.mean(),
-        "median_t": np.median(trans_errs),
-        "mean_r": rot_errs.mean(),
-        "median_r": np.median(rot_errs),
+        "mean_t": df["t_err_m"].mean(),
+        "median_t": df["t_err_m"].median(),
+        "mean_r": df["r_err_deg"].mean(),
+        "median_r": df["r_err_deg"].median()
     }
 
-    print(f"[{args.scene}] "
-          f"mean_t = {results['mean_t']:.3f} m | median_t = {results['median_t']:.3f} m || "
-          f"mean_r = {results['mean_r']:.2f}° | median_r = {results['median_r']:.2f}°")
+    print(f"[PoseNet | {args.scene}] "
+          f"mean_t={stats['mean_t']:.3f} m | median_t={stats['median_t']:.3f} m || "
+          f"mean_r={stats['mean_r']:.2f}° | median_r={stats['median_r']:.2f}°")
 
-    # 保存到 CSV
+    # 保存逐帧误差和统计
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    pd.DataFrame([results]).to_csv(args.out, index=False)
-    print(f"Results saved to {args.out}")
+    per_frame_csv = args.out.replace(".csv", "_perframe.csv")
+    df.to_csv(per_frame_csv, index=False)
+    pd.DataFrame([stats]).to_csv(args.out, index=False)
+
+    return stats, df
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_root", type=str, required=True,
-                        help="Root directory of 7Scenes dataset")
-    parser.add_argument("--scene", type=str, required=True,
-                        help="Scene to evaluate (e.g., chess, pumpkin, redkitchen)")
-    parser.add_argument("--ckpt", type=str, required=True,
-                        help="Path to trained checkpoint (best.ckpt)")
-    parser.add_argument("--out", type=str, default="results/eval_results.csv",
-                        help="Path to save evaluation results")
+    parser.add_argument("--data_root", type=str, required=True)
+    parser.add_argument("--scene", type=str, required=True)
+    parser.add_argument("--ckpt", type=str, required=True)
+    parser.add_argument("--out", type=str, default="results/eval_results.csv")
     args = parser.parse_args()
 
     evaluate(args)
