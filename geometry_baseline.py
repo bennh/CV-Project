@@ -8,12 +8,17 @@ import cv2
 import torch
 import torchvision.models as models
 import torchvision.transforms as T
+import pandas as pd
+
 from data_loader import load_pose_file
 from utils import pose_err_trans_m, pose_err_angular_deg, se3_to_tq
 
 
+# ======================
+# 辅助函数
+# ======================
 def global_descriptor(img_bgr, backbone, transform):
-    """提取全局特征描述子 (ResNet18 GAP)。"""
+    """提取全局描述子 (ResNet18 GAP)。"""
     with torch.no_grad():
         x = transform(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).unsqueeze(0)
         f = backbone(x).flatten(1).cpu().numpy()[0]
@@ -36,12 +41,13 @@ def backproject_keypoint(px, depth, K):
 
 
 def cam_to_world(Xc, T_w_c):
+    """相机坐标系点 → 世界坐标系。"""
     R, t = T_w_c[:3, :3], T_w_c[:3, 3:4]
     return (R @ Xc.reshape(3, 1) + t).reshape(3)
 
 
 def solve_pnp_ransac(pts2d, pts3d, K):
-    """PnP + RANSAC 求解位姿。"""
+    """PnP + RANSAC 求解相机位姿。"""
     if len(pts3d) < 6:
         return None
     ok, rvec, tvec, inliers = cv2.solvePnPRansac(
@@ -61,6 +67,9 @@ def solve_pnp_ransac(pts2d, pts3d, K):
     return T_w_c, inliers
 
 
+# ======================
+# 主函数
+# ======================
 def run_baseline(args):
     scene_dir = os.path.join(args.data_root, args.scene)
 
@@ -75,8 +84,7 @@ def run_baseline(args):
 
     # 全局特征提取网络 (ResNet18 GAP)
     resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-    backbone = torch.nn.Sequential(*list(resnet.children())[:-1])
-    backbone.eval()
+    backbone = torch.nn.Sequential(*list(resnet.children())[:-1]).eval()
     transform = T.Compose([
         T.ToPILImage(),
         T.Resize((256, 320)),
@@ -85,7 +93,7 @@ def run_baseline(args):
                     [0.229, 0.224, 0.225])
     ])
 
-    # 建立 train 库
+    # 构建 train DB
     print("Building train DB descriptors...")
     train_split = os.path.join(scene_dir, "TrainSplit.txt")
     with open(train_split) as f:
@@ -117,7 +125,8 @@ def run_baseline(args):
     with open(test_split) as f:
         test_seqs = [line.strip() for line in f]
 
-    results_t, results_r = [], []
+    results = []
+    frame_id = 0
 
     for seq in test_seqs:
         seq_dir = os.path.join(scene_dir, seq)
@@ -137,6 +146,7 @@ def run_baseline(args):
 
             query_kp, query_desc = orb.detectAndCompute(query_img, None)
             if query_desc is None:
+                frame_id += 1
                 continue
 
             best = None
@@ -173,6 +183,7 @@ def run_baseline(args):
                     best = (T_est, pts2d, inliers)
 
             if best is None:
+                frame_id += 1
                 continue
 
             T_est = best[0]
@@ -181,16 +192,38 @@ def run_baseline(args):
 
             t_err = pose_err_trans_m(t_est, t_gt)
             r_err = pose_err_angular_deg(q_est, q_gt)
-            results_t.append(t_err)
-            results_r.append(r_err)
 
-    # 统计
-    results_t = np.array(results_t)
-    results_r = np.array(results_r)
+            results.append({
+                "frame": frame_id,
+                "t_err_m": t_err,
+                "r_err_deg": r_err
+            })
+            frame_id += 1
+
+    # 转 DataFrame
+    df = pd.DataFrame(results)
+
+    stats = {
+        "scene": args.scene,
+        "mean_t": df["t_err_m"].mean(),
+        "median_t": df["t_err_m"].median(),
+        "mean_r": df["r_err_deg"].mean(),
+        "median_r": df["r_err_deg"].median()
+    }
 
     print(f"[PnP+RANSAC | {args.scene}] "
-          f"mean_t = {results_t.mean():.3f} m | median_t = {np.median(results_t):.3f} m || "
-          f"mean_r = {results_r.mean():.2f}° | median_r = {np.median(results_r):.2f}°")
+          f"mean_t={stats['mean_t']:.3f} m | median_t={stats['median_t']:.3f} m || "
+          f"mean_r={stats['mean_r']:.2f}° | median_r={stats['median_r']:.2f}°")
+
+    # 保存
+    os.makedirs("results", exist_ok=True)
+    per_frame_csv = os.path.join("results", f"{args.scene}_baseline_perframe.csv")
+    df.to_csv(per_frame_csv, index=False)
+
+    stats_csv = os.path.join("results", f"{args.scene}_baseline.csv")
+    pd.DataFrame([stats]).to_csv(stats_csv, index=False)
+
+    return stats, df
 
 
 if __name__ == "__main__":
