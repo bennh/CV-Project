@@ -1,11 +1,6 @@
-好 ✅ 我来帮你写一个简洁清晰的 **README.md**，涵盖：项目目标、结构、环境配置、运行步骤、Notebook 使用方法。
-
----
-
-## 📄 `README.md`
-
-```markdown
 # Deep Learning for Camera Pose Estimation: A Comparative Study on 7Scenes
+
+## Overview
 
 This project implements and compares **learning-based** and **geometry-based** methods for camera pose estimation on the **7-Scenes dataset**:
 
@@ -14,10 +9,9 @@ This project implements and compares **learning-based** and **geometry-based** m
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
-```
-
+```text
 project/
 │── data\_loader.py          # 7-Scenes dataset loader
 │── models.py               # PoseNet model definition
@@ -27,12 +21,11 @@ project/
 │── utils.py                # Helper functions (pose errors, quaternion ops, I/O)
 │── demo.ipynb              # Final notebook: experiments + plots
 │── README.md               # Documentation
-
 ````
 
 ---
 
-## ⚙️ Environment Setup
+## Environment Setup
 
 Recommended: Python 3.10 + PyTorch
 
@@ -45,9 +38,9 @@ pip install torch torchvision opencv-python tqdm matplotlib pandas scikit-image 
 
 ---
 
-## 📊 Dataset: 7-Scenes
+## Dataset: 7-Scenes
 
-Download 7-Scenes dataset and organize as:
+Download 7-Scenes dataset and organize as (https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/):
 
 ```
 7Scenes/
@@ -68,7 +61,7 @@ Download 7-Scenes dataset and organize as:
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### 1. Train PoseNet
 
@@ -130,7 +123,7 @@ Run `demo.ipynb` to:
 
 ---
 
-## 📈 Expected Outputs
+## Expected Outputs
 
 * **Training curve**: PoseNet loss vs. epochs
 * **Quantitative results**: mean/median translation (m) & rotation (°) errors
@@ -139,7 +132,7 @@ Run `demo.ipynb` to:
 
 ---
 
-## 📝 Report
+## Report
 
 Use results in `demo.ipynb` to write a 6–8 page report:
 
@@ -152,11 +145,10 @@ Use results in `demo.ipynb` to write a 6–8 page report:
 
 ---
 
-## 👨‍💻 Author
+## Author
 
 Project for Computer Vision Final Project (SS25)
 Heidelberg University
-
-```
+By Binheng Zheng and Yuefeiyang Li
 
 ---
