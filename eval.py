@@ -18,7 +18,7 @@ def evaluate(args):
     dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=2)
 
     # 模型
-    model = PoseNet("resnet34").cuda().eval()
+    model = PoseNet("resnet34").eval()
     load_ckpt(model, args.ckpt)
 
     # 逐帧结果
@@ -26,8 +26,7 @@ def evaluate(args):
 
     with torch.no_grad():
         for idx, (img, t_gt, q_gt) in enumerate(dl):
-            img = img.cuda()
-            pred = model(img)[0].cpu()
+            pred = model(img)[0]
 
             t_pred, q_pred = pred[:3], pred[3:]
             t_gt, q_gt = t_gt[0], q_gt[0]
