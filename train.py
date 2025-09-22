@@ -22,7 +22,7 @@ def train(args):
                           shuffle=True, num_workers=4, pin_memory=True)
 
     # 模型
-    model = PoseNet('resnet34').cuda()
+    model = PoseNet('resnet34')
     criterion = PoseLoss(beta=args.beta)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
@@ -38,7 +38,6 @@ def train(args):
         total_loss = 0.0
 
         for img, t_gt, q_gt in train_dl:
-            img, t_gt, q_gt = img.cuda(), t_gt.cuda(), q_gt.cuda()
 
             pred = model(img)
             loss = criterion(pred, t_gt, q_gt)
