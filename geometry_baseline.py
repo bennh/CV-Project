@@ -21,7 +21,7 @@ def global_descriptor(img_bgr, backbone, transform):
     """提取全局描述子 (ResNet18 GAP)。"""
     with torch.no_grad():
         x = transform(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).unsqueeze(0)
-        f = backbone(x).flatten(1).cpu().numpy()[0]
+        f = backbone(x).flatten(1).numpy()[0]
         f /= (np.linalg.norm(f) + 1e-8)
     return f
 
