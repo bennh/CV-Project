@@ -2,10 +2,11 @@
 
 ## Overview
 
-This project implements and compares **learning-based** and **geometry-based** methods for camera pose estimation on the **7-Scenes dataset**:
+This project compares **learning-based regression** and **geometry-based methods** for camera pose estimation on the **7-Scenes dataset**:
 
-- **PoseNet (CNN regression)**: trained on one scene, tested on the same and generalized to other scenes.
-- **PnP + RANSAC baseline**: classic geometric approach using 2D–3D correspondences.
+- **PoseNet (CNN regression)**: trained on the *Chess* scene, tested on the same scene and evaluated for cross-scene generalization (*Fire*, *Heads*).
+- **PnP + RANSAC baseline**: a classical geometric pipeline using ORB keypoints and 2D–3D correspondences.  
+  Since the sequences of 7-Scenes are reconstructed independently, results are first computed **per-sequence** and then averaged at the **scene level**.
 
 ---
 
@@ -13,14 +14,14 @@ This project implements and compares **learning-based** and **geometry-based** m
 
 ```text
 project/
-│── data\_loader.py          # 7-Scenes dataset loader
-│── models.py               # PoseNet model definition
-│── train.py                # Train PoseNet
-│── eval.py                 # Evaluate PoseNet (generalization experiments)
-│── geometry\_baseline.py    # PnP + RANSAC baseline
-│── utils.py                # Helper functions (pose errors, quaternion ops, I/O)
-│── demo.ipynb              # Final notebook: experiments + plots
-│── README.md               # Documentation
+│── data_loader.py        # 7-Scenes dataset loader
+│── models.py             # PoseNet model definition
+│── train.py              # Train PoseNet
+│── eval.py               # Evaluate PoseNet (generalization experiments)
+│── geometry_baseline.py  # PnP + RANSAC baseline (sequence-level averaging)
+│── utils.py              # Helper functions (pose errors, quaternion ops, visualization)
+│── demo.ipynb            # Final notebook: experiments + plots
+│── README.md             # Documentation
 ````
 
 ---
@@ -105,9 +106,9 @@ python eval.py --data_root /path/to/7Scenes --scene redkitchen --ckpt runs/posen
 ### 3. Run PnP + RANSAC Baseline
 
 ```bash
-python geometry_baseline.py --data_root /path/to/7Scenes --scene chess --topk 5
-python geometry_baseline.py --data_root /path/to/7Scenes --scene pumpkin --topk 5
-python geometry_baseline.py --data_root /path/to/7Scenes --scene redkitchen --topk 5
+python geometry_baseline.py --data_root /path/to/7Scenes --scene chess --topk 10
+python geometry_baseline.py --data_root /path/to/7Scenes --scene pumpkin --topk 10
+python geometry_baseline.py --data_root /path/to/7Scenes --scene redkitchen --topk 10
 ```
 
 ---
@@ -129,19 +130,6 @@ Run `demo.ipynb` to:
 * **Quantitative results**: mean/median translation (m) & rotation (°) errors
 * **Comparison**: PoseNet vs. PnP+RANSAC
 * **Plots**: error distributions, visualizations
-
----
-
-## Report
-
-Use results in `demo.ipynb` to write a 6–8 page report:
-
-* Abstract, Introduction
-* Related Work
-* Method (PoseNet vs. PnP+RANSAC)
-* Experiments (with plots & tables)
-* Ablation (optional)
-* Conclusion
 
 ---
 
