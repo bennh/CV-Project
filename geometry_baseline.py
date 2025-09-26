@@ -1,8 +1,4 @@
 # geometry_baseline.py
-# 单序列内评估的 PnP+RANSAC 基线：
-# - 对 TestSplit.txt 中的每个 seq-XX，均在该序列内部做检索+PnP
-# - 避免了 7-Scenes 各序列世界坐标不一致的问题
-# - 输出：逐帧误差、每序列统计、场景级统计
 
 import os
 import argparse
@@ -19,10 +15,10 @@ from utils import pose_err_trans_m, pose_err_angular_deg, se3_to_tq
 
 
 # ======================
-# 工具函数
+# Utility functions
 # ======================
 def global_descriptor(img_bgr, backbone, transform):
-    """提取全局描述子 (ResNet18 GAP)。CPU-only。"""
+    """Extract a global descriptor (ResNet18 GAP). CPU-only."""
     with torch.no_grad():
         x = transform(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).unsqueeze(0)
         f = backbone(x).flatten(1).numpy()[0]
@@ -31,7 +27,7 @@ def global_descriptor(img_bgr, backbone, transform):
 
 
 def backproject_keypoint(px, depth, K):
-    """像素 + 深度 → 相机坐标系 3D 点（单位：米）。"""
+    """Pixel + depth → 3D point in the camera frame (meters)."""
     u, v = int(round(px[0])), int(round(px[1]))
     if u < 0 or v < 0 or u >= depth.shape[1] or v >= depth.shape[0]:
         return None
@@ -45,13 +41,13 @@ def backproject_keypoint(px, depth, K):
 
 
 def cam_to_world(Xc, T_w_c):
-    """相机系点 → 世界系点，使用相机到世界的 4x4 变换 T_w_c。"""
+    """Camera-frame point → world-frame point using the 4x4 transform T_w_c (camera to world)."""
     R, t = T_w_c[:3, :3], T_w_c[:3, 3:4]
     return (R @ Xc.reshape(3, 1) + t).reshape(3)
 
 
 def solve_pnp_ransac(pts2d, pts3d, K, reproj_err=5.0, iterations=2000, conf=0.999):
-    """PnP + RANSAC，返回 T_w_c（相机到世界）与 inliers。"""
+    """PnP + RANSAC, return T_w_c (camera to world) and inliers."""
     if len(pts3d) < 6:
         return None
     ok, rvec, tvec, inliers = cv2.solvePnPRansac(
@@ -65,7 +61,7 @@ def solve_pnp_ransac(pts2d, pts3d, K, reproj_err=5.0, iterations=2000, conf=0.99
     if not ok:
         return None
 
-    # OpenCV 返回世界->相机 (R_cw, t_cw)，需要取逆得到相机->世界
+    # OpenCV returns world->camera (R_cw, t_cw); take the inverse to get camera->world
     R_cw, _ = cv2.Rodrigues(rvec)
     t_cw = tvec.reshape(3, 1)
     R_wc = R_cw.T
@@ -78,18 +74,18 @@ def solve_pnp_ransac(pts2d, pts3d, K, reproj_err=5.0, iterations=2000, conf=0.99
 
 
 # ======================
-# 主流程：单序列内评估 + 场景级汇总
+# Main pipeline: per-sequence evaluation + scene-level aggregation
 # ======================
 def run_baseline(args):
     """
-    对 args.scene 的 TestSplit.txt 中列出的每个 seq-XX：
-      - 在该序列内部构建候选库并进行检索 + ORB 匹配 + PnP/RANSAC
-      - 计算逐帧误差
-    最后把所有序列汇总，得到场景级 mean/median。
+    For each seq-XX listed in TestSplit.txt of args.scene:
+      - Build an in-sequence candidate database, perform retrieval + ORB matching + PnP/RANSAC
+      - Compute per-frame errors
+    Finally aggregate all sequences to obtain scene-level mean/median.
     """
     scene_dir = os.path.join(args.data_root, args.scene)
 
-    # 相机内参：若没有 intrinsics.txt，使用 Kinect 常用默认参数
+    # Camera intrinsics: if intrinsics.txt is missing, use typical Kinect defaults
     intr_path = os.path.join(scene_dir, "intrinsics.txt")
     if os.path.exists(intr_path):
         fx, fy, cx, cy = np.loadtxt(intr_path).astype(np.float32).tolist()
@@ -98,7 +94,7 @@ def run_baseline(args):
         fx, fy, cx, cy = 585.0, 585.0, 320.0, 240.0
     K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 
-    # 局部/全局特征
+    # Local / global features
     orb = cv2.ORB_create(nfeatures=args.orb_kpts)
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
 
@@ -112,7 +108,7 @@ def run_baseline(args):
                     [0.229, 0.224, 0.225])
     ])
 
-    # 读取将要评估的序列（仅用 TestSplit）
+    # Read sequences to evaluate (use TestSplit only)
     test_split = os.path.join(scene_dir, "TestSplit.txt")
     with open(test_split) as f:
         test_seqs = [line.strip() for line in f if line.strip()]
@@ -129,7 +125,7 @@ def run_baseline(args):
             print(f"[Warn] No frames found in {seq_dir}. Skipping.")
             continue
 
-        # === 构建该序列内部的检索库 ===
+        # === Build the per-sequence retrieval database ===
         print(f"[{args.scene}/{seq}] building per-sequence DB ...")
         feats, depth_files, pose_files = [], [], []
         for rgb_path in rgb_files:
@@ -144,7 +140,7 @@ def run_baseline(args):
             pose_files.append(pose_path)
         feats = np.asarray(feats)
         if len(feats) != len(rgb_files):
-            # 对齐：如果有缺文件的帧，简单地过滤使三者长度一致
+            # Alignment: if some frames are missing files, simply filter to keep lengths consistent
             keep = [i for i,(r,d,p) in enumerate(zip(rgb_files, depth_files, pose_files))
                     if os.path.exists(d) and os.path.exists(p)]
             rgb_files = [rgb_files[i] for i in keep]
@@ -152,13 +148,13 @@ def run_baseline(args):
             depth_files = [depth_files[i] for i in range(len(keep))]
             pose_files = [pose_files[i] for i in range(len(keep))]
 
-        # === 遍历该序列内的 query 帧 ===
+        # === Iterate over query frames within the sequence ===
         seq_rows = []
         for qi, q_rgb in enumerate(rgb_files):
             q_img = cv2.imread(q_rgb)
             q_feat = global_descriptor(q_img, backbone, transform)
 
-            # 在本序列内检索（排除自身）
+            # Retrieval within the same sequence (exclude itself)
             sims = feats @ q_feat
             sims[qi] = -1e9
             idxs = np.argsort(sims)[-args.topk:][::-1]
@@ -181,7 +177,7 @@ def run_baseline(args):
                     continue
 
                 depth_ref = cv2.imread(depth_files[j], cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000.0
-                T_ref, _, _ = load_pose_file(pose_files[j])  # 同序列世界系
+                T_ref, _, _ = load_pose_file(pose_files[j])  # Same-sequence world frame
 
                 pts2d, pts3d = [], []
                 for m in good:
@@ -190,7 +186,7 @@ def run_baseline(args):
                     Xc = backproject_keypoint(rpt, depth_ref, K)
                     if Xc is None:
                         continue
-                    Xw = cam_to_world(Xc, T_ref)  # 提升到该序列的世界坐标
+                    Xw = cam_to_world(Xc, T_ref)  # Lift to this sequence's world coordinates
                     pts2d.append(qpt)
                     pts3d.append(Xw)
 
@@ -209,7 +205,7 @@ def run_baseline(args):
                 continue
 
             T_est = best[0]
-            T_gt, t_gt, q_gt = load_pose_file(pose_files[qi])  # 同序列 GT，可直接对齐
+            T_gt, t_gt, q_gt = load_pose_file(pose_files[qi])  # Same-sequence GT; directly aligned
             t_est, q_est = se3_to_tq(T_est)
 
             t_err = pose_err_trans_m(t_est, t_gt)
@@ -229,7 +225,7 @@ def run_baseline(args):
             all_rows.append(row)
             frame_counter += 1
 
-        # 序列级统计
+        # Per-sequence statistics
         if len(seq_rows) > 0:
             df_seq = pd.DataFrame(seq_rows)
             per_seq_stats.append({
@@ -250,7 +246,7 @@ def run_baseline(args):
         else:
             print(f"[{args.scene}|{seq}] no valid estimates.")
 
-    # 汇总到场景级
+    # Aggregate to scene level
     if len(all_rows) == 0:
         print(f"[PnP+RANSAC | {args.scene}] no results.")
         return {"scene": args.scene, "mean_t": np.nan, "median_t": np.nan,
@@ -269,18 +265,18 @@ def run_baseline(args):
           f"mean_t={scene_stats['mean_t']:.3f} m | median_t={scene_stats['median_t']:.3f} m || "
           f"mean_r={scene_stats['mean_r']:.2f}° | median_r={scene_stats['median_r']:.2f}°")
 
-    # ===== 保存 =====
+    # ===== Save =====
     os.makedirs("results", exist_ok=True)
 
-    # 逐帧
+    # Per-frame
     per_frame_csv = os.path.join("results", f"{args.scene}_baseline_perframe.csv")
     df_all.to_csv(per_frame_csv, index=False)
 
-    # 序列级统计
+    # Per-sequence statistics
     per_seq_csv = os.path.join("results", f"{args.scene}_baseline_perseq.csv")
     pd.DataFrame(per_seq_stats).to_csv(per_seq_csv, index=False)
 
-    # 场景级统计
+    # Scene-level statistics
     stats_csv = os.path.join("results", f"{args.scene}_baseline.csv")
     pd.DataFrame([scene_stats]).to_csv(stats_csv, index=False)
 
