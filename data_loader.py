@@ -70,7 +70,7 @@ class SevenScenesDataset(Dataset):
         self.img_size = img_size
         self.return_full_pose = return_full_pose
 
-        # 根据 split 文件选择 sequence
+        # Select sequences according to the split file
         split_file = os.path.join(root, scene, f"{split.capitalize()}Split.txt")
         if not os.path.exists(split_file):
             raise FileNotFoundError(f"Split file not found: {split_file}")
@@ -89,7 +89,7 @@ class SevenScenesDataset(Dataset):
                 if os.path.exists(depth_path) and os.path.exists(pose_path):
                     self.samples.append((rgb_path, depth_path, pose_path))
 
-        # 图像预处理
+        # Image preprocessing
         self.to_tensor = T.Compose([
             T.ToPILImage(),
             T.Resize(img_size),
@@ -108,7 +108,7 @@ class SevenScenesDataset(Dataset):
         rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
         img = self.to_tensor(rgb)
 
-        # 位姿
+        # Pose
         T, t, q = load_pose_file(pose_path)
         t = torch.from_numpy(t).float()
         q = torch.from_numpy(q).float()
