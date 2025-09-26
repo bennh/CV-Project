@@ -8,11 +8,11 @@ import random
 
 
 # ====================
-# 损失函数
+# Loss Function
 # ====================
 class PoseLoss(nn.Module):
     """
-    PoseNet 损失函数:
+    PoseNet Loss Function:
     L = ||t - t_gt||_2 + beta * ||q - q_gt||_2
     """
     def __init__(self, beta=120.0):
@@ -29,7 +29,7 @@ class PoseLoss(nn.Module):
 
 
 # ====================
-# 随机种子
+# Random Seed
 # ====================
 def set_seed(seed=0):
     random.seed(seed)
@@ -39,7 +39,7 @@ def set_seed(seed=0):
 
 
 # ====================
-# 模型保存 / 加载
+# Model Save / Load
 # ====================
 def save_ckpt(model, out_dir, name):
     os.makedirs(out_dir, exist_ok=True)
@@ -52,15 +52,15 @@ def load_ckpt(model, path):
 
 
 # ====================
-# 姿态误差计算
+# Pose Error Computation
 # ====================
 def pose_err_trans_m(t_pred, t_gt):
-    """ 平移误差 (米) """
+    """ Translation error (meters) """
     return float(np.linalg.norm(t_pred - t_gt))
 
 
 def pose_err_angular_deg(q_pred, q_gt):
-    """ 四元数旋转误差 (角度) """
+    """ Quaternion rotation error (degrees) """
     q_pred = q_pred / (np.linalg.norm(q_pred) + 1e-12)
     q_gt = q_gt / (np.linalg.norm(q_gt) + 1e-12)
     d = abs(np.dot(q_pred, q_gt))
@@ -69,10 +69,10 @@ def pose_err_angular_deg(q_pred, q_gt):
 
 
 # ====================
-# 四元数 / SE3 转换
+# Quaternion / SE3 Conversion
 # ====================
 def quat2mat(q):
-    """ 四元数 -> 旋转矩阵 """
+    """ Quaternion -> Rotation matrix """
     q = q / (np.linalg.norm(q) + 1e-12)
     w, x, y, z = q
     R = np.array([
@@ -84,7 +84,7 @@ def quat2mat(q):
 
 
 def se3_to_tq(T):
-    """ SE3 4x4 -> 平移 + 四元数 """
+    """ SE3 4x4 -> Translation + Quaternion """
     t = T[:3, 3]
     R = T[:3, :3]
     q = rotmat_to_quat(R)
@@ -92,7 +92,7 @@ def se3_to_tq(T):
 
 
 def rotmat_to_quat(R):
-    """ 旋转矩阵 -> 四元数 (w,x,y,z) """
+    """ Rotation matrix -> Quaternion (w,x,y,z) """
     q = np.empty((4,), dtype=np.float32)
     tr = np.trace(R)
 
