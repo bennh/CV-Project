@@ -13,15 +13,15 @@ from utils import load_ckpt, pose_err_trans_m, pose_err_angular_deg, to_numpy
 
 
 def evaluate(args):
-    # 数据集
+    # Dataset
     ds = SevenScenesDataset(args.data_root, args.scene, split="test")
     dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=2)
 
-    # 模型
+    # Model
     model = PoseNet("resnet34").eval()
     load_ckpt(model, args.ckpt)
 
-    # 逐帧结果
+    # Per-frame results
     results = []
 
     with torch.no_grad():
@@ -44,7 +44,7 @@ def evaluate(args):
 
     df = pd.DataFrame(results)
 
-    # 统计
+    # Statistics
     stats = {
         "scene": args.scene,
         "mean_t": df["t_err_m"].mean(),
@@ -57,7 +57,7 @@ def evaluate(args):
           f"mean_t={stats['mean_t']:.3f} m | median_t={stats['median_t']:.3f} m || "
           f"mean_r={stats['mean_r']:.2f}° | median_r={stats['median_r']:.2f}°")
 
-    # 保存逐帧和统计
+    # Save per-frame results and statistics
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     per_frame_csv = args.out.replace(".csv", "_perframe.csv")
     df.to_csv(per_frame_csv, index=False)
