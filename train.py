@@ -16,20 +16,20 @@ from utils import PoseLoss, set_seed, save_ckpt
 def train(args):
     set_seed(0)
 
-    # 数据集
+    # Dataset
     train_ds = SevenScenesDataset(args.data_root, args.scene, split="train")
     train_dl = DataLoader(train_ds, batch_size=args.batch_size,
                           shuffle=True, num_workers=4, pin_memory=True)
 
-    # 模型
+    # Model
     model = PoseNet('resnet34')
     criterion = PoseLoss(beta=args.beta)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
-    # 保存目录
+    # Save directory
     os.makedirs(args.out, exist_ok=True)
 
-    # 训练
+    # Training
     best_loss = float("inf")
     history = []
 
@@ -52,12 +52,12 @@ def train(args):
         history.append({"epoch": epoch, "loss": avg_loss})
         print(f"[{epoch}/{args.epochs}] avg_loss = {avg_loss:.4f}")
 
-        # 保存 best
+        # Save best checkpoint
         if avg_loss < best_loss:
             best_loss = avg_loss
             save_ckpt(model, args.out, "best.ckpt")
 
-    # 保存 loss 曲线
+    # Save loss curve
     df = pd.DataFrame(history)
     df.to_csv(os.path.join(args.out, "loss_curve.csv"), index=False)
 
