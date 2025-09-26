@@ -124,7 +124,7 @@ Run `demo.ipynb` to:
 
 ---
 
-## Expected Outputs
+## Outputs
 
 * **Training curve**: PoseNet loss vs. epochs
 * **Quantitative results**: mean/median translation (m) & rotation (°) errors
