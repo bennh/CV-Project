@@ -4,15 +4,15 @@ import torch
 from data_loader import SevenScenesDataset
 
 def main():
-    data_root = "/path/to/7Scenes"  # 修改成你的数据集路径
+    data_root = "/path/to/7Scenes"  # Change to your dataset path
     scene = "chess"
 
-    # 加载训练集，返回完整位姿矩阵
+    # Load the training set and return the full pose matrix
     ds = SevenScenesDataset(data_root, scene, split="train", return_full_pose=True)
 
     print(f"Loaded {scene} train set: {len(ds)} samples")
 
-    # 取第一张
+    # Take the first sample
     img, t, q, T = ds[0]
 
     print("Image tensor shape:", img.shape)   # (3, H, W)
