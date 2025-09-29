@@ -97,8 +97,8 @@ python eval.py \
   --ckpt runs/posenet_chess/best.ckpt \
   --out results/chess_eval.csv
 
-python eval.py --data_root /path/to/7Scenes --scene pumpkin --ckpt runs/posenet_chess/best.ckpt --out results/pumpkin_eval.csv
-python eval.py --data_root /path/to/7Scenes --scene redkitchen --ckpt runs/posenet_chess/best.ckpt --out results/redkitchen_eval.csv
+python eval.py --data_root /path/to/7Scenes --scene fire --ckpt runs/posenet_chess/best.ckpt --out results/fire_eval.csv
+python eval.py --data_root /path/to/7Scenes --scene heads --ckpt runs/posenet_chess/best.ckpt --out results/heads_eval.csv
 ```
 
 ---
@@ -107,8 +107,8 @@ python eval.py --data_root /path/to/7Scenes --scene redkitchen --ckpt runs/posen
 
 ```bash
 python geometry_baseline.py --data_root /path/to/7Scenes --scene chess --topk 10
-python geometry_baseline.py --data_root /path/to/7Scenes --scene pumpkin --topk 10
-python geometry_baseline.py --data_root /path/to/7Scenes --scene redkitchen --topk 10
+python geometry_baseline.py --data_root /path/to/7Scenes --scene fire --topk 10
+python geometry_baseline.py --data_root /path/to/7Scenes --scene heads --topk 10
 ```
 
 ---
@@ -121,6 +121,7 @@ Run `demo.ipynb` to:
 * Evaluate PoseNet on multiple scenes
 * Run PnP+RANSAC baseline
 * Summarize results in tables & plots
+* Effect of β (50, 120, 250) on PoseNet's generalization
 
 ---
 
@@ -135,8 +136,6 @@ Run `demo.ipynb` to:
 
 ## Author
 
-Project for Computer Vision Final Project (SS25)
-Heidelberg University
-By Binheng Zheng and Yuefeiyang Li
+Binheng Zheng & Yuefeiyang Li
 
 ---
